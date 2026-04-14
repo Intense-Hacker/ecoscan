@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #0a0f0b;
+    color: #e8f0ea;
+    min-height: 100vh;
+  }
+}
+
+@layer utilities {
+  .font-display { font-family: 'Syne', sans-serif; }
+}
+
+/* Leaflet dark fix */
+.leaflet-container { background: #1a2420 !important; }
+.leaflet-tile-pane { filter: brightness(0.7) saturate(0.6); }
+
+/* Scan animation */
+@keyframes scan-line {
+  0% { top: 0%; opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+.scan-line {
+  animation: scan-line 2s linear infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+.pulse-ring {
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #27a065; border-radius: 2px; }
+
+/* Health bar animation */
+@keyframes fill-bar {
+  from { width: 0%; }
+}
+.health-bar-fill {
+  animation: fill-bar 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Fade in up */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fade-up 0.5s ease forwards; }
+.fade-up-2 { animation: fade-up 0.5s 0.1s ease both; }
+.fade-up-3 { animation: fade-up 0.5s 0.2s ease both; }
+.fade-up-4 { animation: fade-up 0.5s 0.3s ease both; }

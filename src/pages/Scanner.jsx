@@ -1,0 +1,213 @@
+import { useState, useRef } from 'react'
+import { saveReport } from '../utils/storage'
+
+const API_KEY = import.meta.env.VITE_FEATHERLESS_API_KEY
+
+export default function Scanner() {
+  const [image, setImage] = useState(null)
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [dragging, setDragging] = useState(false)
+  const inputRef = useRef()
+
+  function handleFile(file) {
+    if (!file || !file.type.startsWith('image/')) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setImage({ url: e.target.result, base64: e.target.result.split(',')[1], mime: file.type })
+      setResult(null); setError(null)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function scanLeaf() {
+    if (!image) return
+    if (!API_KEY) { setError('Add VITE_FEATHERLESS_API_KEY to your .env file'); return }
+    setLoading(true); setError(null); setResult(null)
+
+    const prompt = `You are EcoScan, an expert in plant pathology and environmental pollution detection. Analyze this plant/leaf image and return ONLY valid JSON (no markdown) in this structure:\n{"plant_name":"string","health_score":<0-100>,"stress_level":"Low|Moderate|High|Critical","pollution_indicators":["symptom"],"likely_causes":["cause"],"eco_health_note":"1-2 sentences","fix_it_tips":["tip1","tip2","tip3"]}`
+
+    try {
+      const res = await fetch(
+        'https://api.featherless.ai/v1/chat/completions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${API_KEY}`
+          },
+          body: JSON.stringify({
+            model: 'moonshotai/Kimi-K2.5',
+            max_tokens: 2048,
+            temperature: 0.3,
+            messages: [
+              {
+                role: 'system',
+                content: 'You are EcoScan, an expert in plant pathology and environmental pollution detection. You MUST respond with ONLY a single valid JSON object. No markdown, no explanation, no extra text — just the raw JSON.'
+              },
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: prompt },
+                  {
+                    type: 'image_url',
+                    image_url: { url: `data:${image.mime};base64,${image.base64}` }
+                  }
+                ]
+              }
+            ]
+          })
+        }
+      )
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || `Error ${res.status}`) }
+      const data = await res.json()
+      const raw = data.choices?.[0]?.message?.content || ''
+
+      // Robustly extract JSON: strip markdown fences, then find the first { ... } block
+      const cleaned = raw.replace(/```json|```/g, '').trim()
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) throw new Error('No JSON found in response. Raw: ' + cleaned.slice(0, 200))
+      const parsed = JSON.parse(jsonMatch[0])
+
+      setResult(parsed)
+      saveReport({ ...parsed, imageUrl: image.url, date: new Date().toISOString() })
+    } catch(err) { setError(err.message) }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div className="p-8 max-w-4xl">
+      <div className="mb-8 fade-up">
+        <h1 className="font-display text-3xl font-bold text-forest-100 tracking-tight">Leaf Scanner</h1>
+        <p className="text-forest-600 mt-1 text-sm">Upload a plant photo to detect environmental stress caused by air or soil pollution</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="fade-up-2">
+          {!image ? (
+            <div
+              className={`rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center p-12 text-center min-h-64 ${dragging ? 'border-forest-400 bg-forest-900/20' : 'border-forest-900 hover:border-forest-700 bg-[#0f1a13]'}`}
+              onClick={() => inputRef.current.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]) }}
+            >
+              <div className="w-14 h-14 rounded-2xl bg-forest-900/60 flex items-center justify-center mb-4">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#27a065" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+              </div>
+              <p className="font-display font-semibold text-forest-300 mb-1">Drop your plant photo here</p>
+              <p className="text-xs text-forest-700">or click to browse · JPG, PNG, WEBP</p>
+              <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e => handleFile(e.target.files[0])} />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="relative rounded-2xl overflow-hidden">
+                <img src={image.url} alt="Uploaded leaf" className="w-full object-cover max-h-72"/>
+                {loading && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="w-8 h-8 border-2 border-forest-400 border-t-transparent rounded-full animate-spin mx-auto mb-2"/>
+                      <p className="text-xs text-forest-300 font-medium">Analyzing with Llama Vision...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={scanLeaf} disabled={loading}
+                  className="flex-1 py-2.5 rounded-xl bg-forest-500 text-white text-sm font-medium hover:bg-forest-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                  {loading ? 'Scanning...' : '🔍 Scan for stress'}
+                </button>
+                <button onClick={() => { setImage(null); setResult(null); setError(null) }}
+                  className="px-3 py-2.5 rounded-xl border border-forest-900 text-forest-600 text-sm hover:text-forest-400 transition-colors">
+                  Change
+                </button>
+              </div>
+            </div>
+          )}
+
+          {error && <div className="mt-3 p-3 rounded-xl bg-red-950/40 border border-red-900/60 text-red-400 text-sm">{error}</div>}
+
+          <div className="mt-4 p-3 rounded-xl bg-forest-900/20 border border-forest-900/40">
+            <p className="text-xs text-forest-500 font-medium mb-1">✓ Powered by Featherless.ai (Llama 3.2 Vision)</p>
+            <p className="text-xs text-forest-800 leading-relaxed">
+              Get key at <a href="https://featherless.ai" target="_blank" rel="noreferrer" className="text-forest-500 underline">featherless.ai</a> → paste in <code className="bg-forest-900/60 px-1 rounded">.env</code> as VITE_FEATHERLESS_API_KEY
+            </p>
+          </div>
+        </div>
+
+        <div className="fade-up-3">
+          {!result && !loading && (
+            <div className="rounded-2xl border border-forest-900/60 bg-[#0f1a13]/60 p-8 flex items-center justify-center text-center min-h-64">
+              <p className="text-forest-700 text-sm">Results will appear here after scanning</p>
+            </div>
+          )}
+          {loading && (
+            <div className="rounded-2xl border border-forest-900 bg-[#0f1a13] p-6 space-y-3">
+              {[60,90,75,85,50].map((w,i) => <div key={i} className="h-3 rounded-full bg-forest-900/60 animate-pulse" style={{width:`${w}%`}}/>)}
+            </div>
+          )}
+          {result && <ResultCard result={result} />}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ResultCard({ result }) {
+  const score = Math.round(result.health_score)
+  const scoreColor = score >= 70 ? '#27a065' : score >= 40 ? '#e09d3f' : '#e24b4a'
+  const stressCfg = { Low:'bg-green-900/40 text-green-400 border-green-900', Moderate:'bg-yellow-900/40 text-yellow-400 border-yellow-900', High:'bg-red-900/40 text-red-400 border-red-900', Critical:'bg-red-900/60 text-red-300 border-red-800' }
+  return (
+    <div className="rounded-2xl border border-forest-900 bg-[#0f1a13] overflow-hidden fade-up">
+      <div className="px-5 py-4 border-b border-forest-900/60 flex items-center justify-between">
+        <div>
+          <p className="text-xs text-forest-700 uppercase tracking-wider mb-0.5">Plant identified</p>
+          <p className="font-display font-semibold text-forest-200 text-sm">{result.plant_name}</p>
+        </div>
+        <div className="text-right">
+          <p className="font-display text-3xl font-bold" style={{color:scoreColor}}>{score}</p>
+          <p className="text-xs text-forest-700">/ 100</p>
+        </div>
+      </div>
+      <div className="px-5 py-3 border-b border-forest-900/60">
+        <div className="flex justify-between text-xs text-forest-700 mb-1.5">
+          <span>Health level</span>
+          <span className={`px-2 py-0.5 rounded-full border text-xs ${stressCfg[result.stress_level]||stressCfg.Moderate}`}>{result.stress_level} stress</span>
+        </div>
+        <div className="h-1.5 bg-forest-900 rounded-full overflow-hidden">
+          <div className="health-bar-fill h-full rounded-full" style={{width:`${score}%`,background:scoreColor}}/>
+        </div>
+      </div>
+      <div className="px-5 py-4 space-y-4 max-h-80 overflow-y-auto">
+        {result.eco_health_note && (
+          <div className="p-3 rounded-lg bg-forest-900/30 border border-forest-900/60">
+            <p className="text-xs text-forest-500 uppercase tracking-wider mb-1">Eco health note</p>
+            <p className="text-sm text-forest-300 leading-relaxed">{result.eco_health_note}</p>
+          </div>
+        )}
+        {result.pollution_indicators?.length > 0 && <Section title="Symptoms detected" items={result.pollution_indicators} dotColor="#e24b4a"/>}
+        {result.likely_causes?.length > 0 && <Section title="Likely causes" items={result.likely_causes} dotColor="#e09d3f"/>}
+        {result.fix_it_tips?.length > 0 && <Section title="Fix-it tips" items={result.fix_it_tips} dotColor="#27a065"/>}
+      </div>
+    </div>
+  )
+}
+
+function Section({ title, items, dotColor }) {
+  return (
+    <div>
+      <p className="text-xs text-forest-600 uppercase tracking-wider mb-2">{title}</p>
+      <ul className="space-y-1.5">
+        {items.map((item,i) => (
+          <li key={i} className="flex items-start gap-2 text-sm text-forest-400">
+            <span className="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{background:dotColor}}/>{item}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
