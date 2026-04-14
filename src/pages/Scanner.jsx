@@ -127,8 +127,13 @@ export default function Scanner() {
     if (!API_KEY) { setError('Add VITE_FEATHERLESS_API_KEY to your .env file'); return }
     setLoading(true); setError(null); setResult(null)
 
-    const prompt = `You are EcoScan, an expert in plant pathology and environmental pollution detection. Analyze this plant/leaf image and return ONLY valid JSON (no markdown) in this structure:
-{"plant_name":"string","health_score":<0-100>,"stress_level":"Low|Moderate|High|Critical","pollution_indicators":["symptom"],"likely_causes":["cause"],"eco_health_note":"1-2 sentences","fix_it_tips":["tip1","tip2","tip3"]}`
+
+// TO:
+const prompt = `You are EcoScan, an expert in plant pathology and environmental pollution detection.
+FIRST check: does this image contain a plant, leaf, tree, or any vegetation?
+If the image does NOT contain a plant, return ONLY this JSON: {"is_plant":false}
+If it DOES contain a plant, return ONLY valid JSON in this structure:
+{"is_plant":true,"plant_name":"string","health_score":<0-100>,"stress_level":"Low|Moderate|High|Critical","pollution_indicators":["symptom"],"likely_causes":["cause"],"eco_health_note":"1-2 sentences","fix_it_tips":["tip1","tip2","tip3"]}`
 
     try {
       const res = await fetch('https://api.featherless.ai/v1/chat/completions', {
@@ -141,7 +146,7 @@ export default function Scanner() {
           messages: [
             {
               role: 'system',
-              content: 'You are EcoScan, an expert in plant pathology and environmental pollution detection. You MUST respond with ONLY a single valid JSON object. No markdown, no explanation, no extra text — just the raw JSON.'
+              content: 'You are EcoScan, an expert in plant pathology and environmental pollution detection. You MUST respond with ONLY a single valid JSON object. No markdown, no explanation, no extra text — just raw JSON. If the image is not a plant, return {"is_plant":false}.'
             },
             {
               role: 'user',
@@ -159,8 +164,18 @@ export default function Scanner() {
       const jsonMatch = raw.replace(/```json|```/g, '').trim().match(/\{[\s\S]*\}/)
       if (!jsonMatch) throw new Error('No JSON found in response. Raw: ' + raw.slice(0, 200))
       const parsed = JSON.parse(jsonMatch[0])
+      if (parsed.is_plant === false) {
+        throw new Error('🌿 No plant detected. Please upload a photo of a plant or leaf.')
+      }
       setResult(parsed)
-      saveReport({ ...parsed, imageUrl: image.url, date: new Date().toISOString(), location: location || null })
+      saveReport({
+        ...parsed,
+        imageUrl: image.url,
+        date: new Date().toISOString(),
+        lat: location?.latitude ?? null,
+        lng: location?.longitude ?? null,
+        locationName: location?.name ?? null,
+      })
     } catch (err) { setError(err.message) }
     finally { setLoading(false) }
   }
@@ -202,7 +217,7 @@ export default function Scanner() {
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                     <div className="text-center">
                       <div className="w-8 h-8 border-2 border-forest-400 border-t-transparent rounded-full animate-spin mx-auto mb-2"/>
-                      <p className="text-xs text-forest-300 font-medium">Analyzing with Kimi Vision...</p>
+                      <p className="text-xs text-forest-300 font-medium">Analyzing with AI Vision...</p>
                     </div>
                   </div>
                 )}
@@ -280,7 +295,7 @@ export default function Scanner() {
           )}
 
           <div className="mt-4 p-3 rounded-xl bg-forest-900/20 border border-forest-900/40">
-            <p className="text-xs text-forest-500 font-medium mb-1">Powered by Featherless.ai (Kimi-K2.5)</p>
+            <p className="text-xs text-forest-500 font-medium mb-1">Powered by Featherless.ai (Gemma Vision)</p>
             <p className="text-xs text-forest-800 leading-relaxed">
               Get key at <a href="https://featherless.ai" target="_blank" rel="noreferrer" className="text-forest-500 underline">featherless.ai</a> → paste in <code className="bg-forest-900/60 px-1 rounded">.env</code> as VITE_FEATHERLESS_API_KEY
             </p>
