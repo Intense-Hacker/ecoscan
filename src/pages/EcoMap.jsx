@@ -3,6 +3,7 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import { getReports } from '../utils/storage'
+import { getAreaPollutionSummary, getPollutionTone } from '../utils/pollution'
 
 export default function EcoMap() {
   const mapRef          = useRef(null)
@@ -92,6 +93,11 @@ export default function EcoMap() {
   const hasLocation = reports.some(r => r.lat && r.lng)
   const scoreColor  = s => s >= 70 ? '#27a065' : s >= 40 ? '#e09d3f' : '#e24b4a'
   const stressClass = { Low: 'text-green-400', Moderate: 'text-yellow-400', High: 'text-red-400', Critical: 'text-red-300' }
+  const areaPollution = getAreaPollutionSummary(reports, { requireLocation: true })
+  const selectedPollution = selectedGroup ? getAreaPollutionSummary(selectedGroup) : null
+  const pollutionTone = getPollutionTone(areaPollution.band)
+  const selectedTone = getPollutionTone(selectedPollution?.band ?? 'Low')
+  const pollutionConfidence = Math.round(areaPollution.confidence * 100)
 
   return (
     <div className="p-8 max-w-5xl">
@@ -106,6 +112,38 @@ export default function EcoMap() {
 
         {/* Sidebar */}
         <div className="space-y-4">
+
+          <div className="rounded-2xl border border-forest-900 bg-[#0f1a13] p-4">
+            <p className="font-display text-xs font-semibold text-forest-500 uppercase tracking-wider mb-2">Air pollution estimate</p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-display text-xl font-semibold" style={{ color: pollutionTone.color }}>
+                  {areaPollution.band} risk
+                </p>
+                <p className="text-xs text-forest-700 mt-1 leading-relaxed">
+                  {areaPollution.note}
+                </p>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="font-display text-3xl font-bold" style={{ color: pollutionTone.color }}>
+                  {areaPollution.score}
+                </p>
+                <p className="text-[11px] text-forest-700">bioindicator</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
+              {[
+                { label: 'Geo scans', value: areaPollution.geoSampleCount },
+                { label: 'Signals', value: areaPollution.highSignalCount },
+                { label: 'Confidence', value: `${pollutionConfidence}%` },
+              ].map((item) => (
+                <div key={item.label} className="rounded-xl border border-forest-900/60 bg-forest-900/20 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-wider text-forest-700">{item.label}</p>
+                  <p className="font-display text-lg font-semibold text-forest-300">{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* Legend */}
           <div className="rounded-2xl border border-forest-900 bg-[#0f1a13] p-4">
@@ -146,6 +184,24 @@ export default function EcoMap() {
                   className="text-xs text-forest-700 hover:text-forest-500 transition-colors"
                 >✕</button>
               </div>
+              {selectedPollution && (
+                <div className="rounded-xl border border-forest-900/60 bg-forest-900/20 p-3 mb-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wider text-forest-700 mb-1">Pollution signal at this spot</p>
+                      <p className="font-display text-sm font-semibold" style={{ color: selectedTone.color }}>
+                        {selectedPollution.band} risk
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="font-display text-2xl font-bold" style={{ color: selectedTone.color }}>
+                        {selectedPollution.score}
+                      </p>
+                      <p className="text-[11px] text-forest-700">bioindicator</p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                 {selectedGroup.map((r, i) => (
                   <div key={i} className="pb-3 border-b border-forest-900/40 last:border-0 last:pb-0">

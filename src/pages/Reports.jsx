@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { getReports, deleteReport, clearReports } from '../utils/storage'
+import { enrichReport, getPollutionTone } from '../utils/pollution'
 
 export default function Reports() {
   const [reports, setReports]   = useState(getReports)
@@ -7,7 +8,8 @@ export default function Reports() {
   const [hoverId, setHoverId]   = useState(null)
 
   const levels   = ['All', 'Low', 'Moderate', 'High', 'Critical']
-  const filtered = filter === 'All' ? reports : reports.filter(r => r.stress_level === filter)
+  const enrichedReports = reports.map(enrichReport)
+  const filtered = filter === 'All' ? enrichedReports : enrichedReports.filter(r => r.stress_level === filter)
   const sorted   = [...filtered].reverse()
 
   const stressCfg = {
@@ -62,6 +64,8 @@ export default function Reports() {
       <div className="fade-up-3 space-y-3">
         {sorted.map((r) => {
           const uid = r.id ?? r.date
+          const pollutionTone = getPollutionTone(r.pollution_band)
+          const locationLabel = r.locationName || (r.lat != null && r.lng != null ? `${r.lat.toFixed(4)}, ${r.lng.toFixed(4)}` : null)
           return (
             <div
               key={uid}
@@ -96,12 +100,12 @@ export default function Reports() {
                     <div>
                       <p className="font-display font-semibold text-forest-200 text-sm">{r.plant_name}</p>
                       <p className="text-xs text-forest-700 mt-0.5">{new Date(r.date).toLocaleString()}</p>
-                      {r.location && (
+                      {locationLabel && (
                         <p className="text-xs text-forest-600 mt-0.5 flex items-center gap-1">
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
                           </svg>
-                          {r.location.name || `${r.location.latitude?.toFixed(4)}, ${r.location.longitude?.toFixed(4)}`}
+                          {locationLabel}
                         </p>
                       )}
                     </div>
@@ -117,6 +121,39 @@ export default function Reports() {
                   {r.eco_health_note && (
                     <p className="text-xs text-forest-600 mt-2 leading-relaxed">{r.eco_health_note}</p>
                   )}
+                  <div className="mt-3 rounded-xl border border-forest-900/60 bg-forest-900/20 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider text-forest-700 mb-1">Air pollution estimate</p>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full border ${pollutionTone.badgeClass}`}>
+                            {r.pollution_band} risk
+                          </span>
+                          <span className="text-xs text-forest-600">
+                            {Math.round((r.confidence ?? 0) * 100)}% confidence
+                          </span>
+                        </div>
+                        <p className="text-xs text-forest-600 mt-2 leading-relaxed">
+                          {r.air_pollution_note || 'Estimated from plant symptoms that can indicate airborne stress.'}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-display text-2xl font-bold" style={{ color: pollutionTone.color }}>
+                          {r.bioindicator_score}
+                        </p>
+                        <p className="text-[11px] text-forest-700">bioindicator</p>
+                      </div>
+                    </div>
+                    {r.suspected_pollutants?.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {r.suspected_pollutants.map((pollutant, index) => (
+                          <span key={`${pollutant}-${index}`} className={`text-xs px-2 py-0.5 rounded-full border ${pollutionTone.badgeClass}`}>
+                            {pollutant}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   {r.pollution_indicators?.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
                       {r.pollution_indicators.slice(0, 3).map((ind, j) => (

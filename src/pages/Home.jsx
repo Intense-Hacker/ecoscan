@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { getReports } from '../utils/storage'
 import { useMemo } from 'react'
+import { getAreaPollutionSummary, getPollutionTone } from '../utils/pollution'
 
 export default function Home() {
   const navigate = useNavigate()
@@ -14,8 +15,11 @@ export default function Home() {
     return { avg, total: reports.length, stressed, healthy }
   }, [reports])
 
+  const pollutionSummary = useMemo(() => getAreaPollutionSummary(reports), [reports])
   const scoreColor = stats.avg == null ? '#27a065' : stats.avg >= 70 ? '#27a065' : stats.avg >= 40 ? '#e09d3f' : '#e24b4a'
   const scoreLabel = stats.avg == null ? '—' : stats.avg >= 70 ? 'Good' : stats.avg >= 40 ? 'Moderate' : 'Poor'
+  const pollutionTone = getPollutionTone(pollutionSummary.band)
+  const pollutionConfidence = Math.round(pollutionSummary.confidence * 100)
   const recent = reports.slice(-4).reverse()
 
   return (
@@ -60,6 +64,38 @@ export default function Home() {
           >
             Scan a plant →
           </button>
+        </div>
+      </div>
+
+      <div className="fade-up-2 mb-6 rounded-2xl border border-forest-900 bg-[#0f1a13] p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs text-forest-600 uppercase tracking-wider mb-1">Plant-based air pollution estimate</p>
+            <h2 className="font-display text-2xl font-semibold" style={{ color: pollutionTone.color }}>
+              {pollutionSummary.band} risk
+            </h2>
+            <p className="text-sm text-forest-600 mt-2 max-w-2xl leading-relaxed">
+              {pollutionSummary.note}
+            </p>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="font-display text-4xl font-bold" style={{ color: pollutionTone.color }}>
+              {pollutionSummary.score}
+            </p>
+            <p className="text-xs text-forest-700">bioindicator</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+          {[
+            { label: 'Signals used', value: pollutionSummary.sampleCount },
+            { label: 'Geo-tagged scans', value: pollutionSummary.geoSampleCount },
+            { label: 'Confidence', value: `${pollutionConfidence}%` },
+          ].map(item => (
+            <div key={item.label} className="rounded-xl border border-forest-900/60 bg-forest-900/20 p-4">
+              <p className="text-xs text-forest-700 uppercase tracking-wider mb-1">{item.label}</p>
+              <p className="font-display text-2xl font-bold text-forest-300">{item.value}</p>
+            </div>
+          ))}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { saveReport } from '../utils/storage'
 import { extractGPS, reverseGeocode } from '../utils/exifGps'
+import { enrichReport, getPollutionTone } from '../utils/pollution'
 
 const API_KEY = import.meta.env.VITE_FEATHERLESS_API_KEY
 
@@ -128,12 +129,11 @@ export default function Scanner() {
     setLoading(true); setError(null); setResult(null)
 
 
-// TO:
-const prompt = `You are EcoScan, an expert in plant pathology and environmental pollution detection.
+    const prompt = `You are EcoScan, an expert in plant pathology and environmental pollution detection.
 FIRST check: does this image contain a plant, leaf, tree, or any vegetation?
 If the image does NOT contain a plant, return ONLY this JSON: {"is_plant":false}
 If it DOES contain a plant, return ONLY valid JSON in this structure:
-{"is_plant":true,"plant_name":"string","health_score":<0-100>,"stress_level":"Low|Moderate|High|Critical","pollution_indicators":["symptom"],"likely_causes":["cause"],"eco_health_note":"1-2 sentences","fix_it_tips":["tip1","tip2","tip3"]}`
+{"is_plant":true,"plant_name":"string","health_score":<0-100>,"stress_level":"Low|Moderate|High|Critical","pollution_indicators":["symptom"],"likely_causes":["cause"],"eco_health_note":"1-2 sentences","fix_it_tips":["tip1","tip2","tip3"],"air_pollution_likelihood":<0-100>,"air_pollution_severity":<0-100>,"non_pollution_likelihood":<0-100>,"confidence":<0-100>,"plant_sensitivity":"Low|Medium|High","suspected_pollutants":["PM2.5","NOx","SO2","O3","Dust"],"air_pollution_note":"1-2 sentences about whether the stress looks linked to airborne pollution"}`
 
     try {
       const res = await fetch('https://api.featherless.ai/v1/chat/completions', {
@@ -167,9 +167,10 @@ If it DOES contain a plant, return ONLY valid JSON in this structure:
       if (parsed.is_plant === false) {
         throw new Error('🌿 No plant detected. Please upload a photo of a plant or leaf.')
       }
-      setResult(parsed)
+      const enriched = enrichReport(parsed)
+      setResult(enriched)
       saveReport({
-        ...parsed,
+        ...enriched,
         imageUrl: image.url,
         date: new Date().toISOString(),
         lat: location?.latitude ?? null,
@@ -323,6 +324,9 @@ If it DOES contain a plant, return ONLY valid JSON in this structure:
 function ResultCard({ result }) {
   const score = Math.round(result.health_score)
   const scoreColor = score >= 70 ? '#27a065' : score >= 40 ? '#e09d3f' : '#e24b4a'
+  const pollutionTone = getPollutionTone(result.pollution_band ?? result.bioindicator_score ?? 0)
+  const pollutionLikelihood = Math.round((result.air_pollution_likelihood ?? 0) * 100)
+  const pollutionConfidence = Math.round((result.confidence ?? 0) * 100)
   const stressCfg = {
     Low:      'bg-green-900/40 text-green-400 border-green-900',
     Moderate: 'bg-yellow-900/40 text-yellow-400 border-yellow-900',
@@ -348,6 +352,54 @@ function ResultCard({ result }) {
         </div>
         <div className="h-1.5 bg-forest-900 rounded-full overflow-hidden">
           <div className="health-bar-fill h-full rounded-full" style={{width:`${score}%`,background:scoreColor}}/>
+        </div>
+      </div>
+      <div className="px-5 py-4 border-b border-forest-900/60">
+        <div className="rounded-xl border border-forest-900/60 bg-forest-900/20 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs text-forest-500 uppercase tracking-wider mb-1">Air pollution estimate</p>
+              <p className="font-display text-lg font-semibold" style={{ color: pollutionTone.color }}>
+                {result.pollution_band || 'Moderate'} risk
+              </p>
+              <p className="text-xs text-forest-600 mt-1 max-w-sm leading-relaxed">
+                {result.air_pollution_note || 'This estimate is based on leaf symptoms that can act as bioindicators of airborne stress.'}
+              </p>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <p className="font-display text-3xl font-bold" style={{ color: pollutionTone.color }}>
+                {result.bioindicator_score ?? 0}
+              </p>
+              <p className="text-xs text-forest-700">bioindicator</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
+            {[
+              { label: 'Likelihood', value: `${pollutionLikelihood}%` },
+              { label: 'Severity', value: `${result.air_pollution_severity ?? 0}` },
+              { label: 'Confidence', value: `${pollutionConfidence}%` },
+            ].map((item) => (
+              <div key={item.label} className="rounded-lg border border-forest-900/60 bg-[#0f1a13] px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wider text-forest-700">{item.label}</p>
+                <p className="font-display text-lg font-semibold text-forest-300">{item.value}</p>
+              </div>
+            ))}
+          </div>
+          {result.suspected_pollutants?.length > 0 && (
+            <div className="mt-4">
+              <p className="text-xs text-forest-600 uppercase tracking-wider mb-2">Suspected pollutants</p>
+              <div className="flex flex-wrap gap-1.5">
+                {result.suspected_pollutants.map((pollutant, index) => (
+                  <span
+                    key={`${pollutant}-${index}`}
+                    className={`text-xs px-2 py-0.5 rounded-full border ${pollutionTone.badgeClass}`}
+                  >
+                    {pollutant}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
       <div className="px-5 py-4 space-y-4 max-h-80 overflow-y-auto">
