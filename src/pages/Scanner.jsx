@@ -297,9 +297,6 @@ If it DOES contain a plant, return ONLY valid JSON in this structure:
 
           <div className="mt-4 p-3 rounded-xl bg-forest-900/20 border border-forest-900/40">
             <p className="text-xs text-forest-500 font-medium mb-1">Powered by Featherless.ai (Gemma Vision)</p>
-            <p className="text-xs text-forest-800 leading-relaxed">
-              Get key at <a href="https://featherless.ai" target="_blank" rel="noreferrer" className="text-forest-500 underline">featherless.ai</a> → paste in <code className="bg-forest-900/60 px-1 rounded">.env</code> as VITE_FEATHERLESS_API_KEY
-            </p>
           </div>
         </div>
 
